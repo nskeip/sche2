@@ -49,6 +49,9 @@ fn parseList(allocator: std.mem.Allocator, cursor: *Cursor) !Value {
     }
 
     const firstCons = try allocator.create(Cons);
+    firstCons.car = .nil;
+    firstCons.cdr = .nil;
+    errdefer consDeinit(allocator, firstCons);
     var current = firstCons;
 
     while (cursor.peek().? != .rparen) {
@@ -57,12 +60,16 @@ fn parseList(allocator: std.mem.Allocator, cursor: *Cursor) !Value {
         if (cursor.peek().? == .dot) {
             _ = try cursor.advance(); // consume `.`
             current.cdr = try parseExpr(allocator, cursor);
+            if (cursor.peek().? != .rparen) return ParseError.UnexpectedToken;
             break;
         }
 
-        if(cursor.peek().? != .rparen) {
-            current.cdr = .{ .cons = try allocator.create(Cons) };
-            current = current.cdr.cons;
+        if (cursor.peek().? != .rparen) {
+            const nextCons = try allocator.create(Cons);
+            nextCons.car = .nil;
+            nextCons.cdr = .nil;
+            current.cdr = .{ .cons = nextCons };
+            current = nextCons;
         } else {
             current.cdr = .nil;
         }
