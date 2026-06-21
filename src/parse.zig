@@ -31,21 +31,7 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!Val
                 i += 1;
             },
             .lparen => {
-                var subexprEnd = i + 1;
-                {
-                    var openingParenNum: i64 = 1;
-                    while (openingParenNum != 0 and subexprEnd < tokens.len) {
-                        if (tokens[subexprEnd] == .lparen) {
-                            openingParenNum += 1;
-                        } else if (tokens[subexprEnd] == .rparen) {
-                            openingParenNum -= 1;
-                        }
-                        subexprEnd += 1;
-                    }
-                    if (subexprEnd >= tokens.len) {
-                        return ParseError.UnmatchedParen;
-                    }
-                }
+                const subexprEnd = i + (try calcCurrentSubexprEnd(tokens[i..]));
                 switch (try parse(allocator, tokens[i..subexprEnd])) {
                     .cons => |c| currentCons.car = Value{ .cons = c },
                     else => unreachable,
@@ -66,6 +52,25 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!Val
 
     // return first_expr;
     return .{ .cons = firstCons };
+}
+
+fn calcCurrentSubexprEnd(tokens: []const Token) !usize {
+    var endIdx: usize = 1;
+    {
+        var depth: i64 = 1;  // we have already opened
+        while (depth != 0 and endIdx < tokens.len) {
+            if (tokens[endIdx] == .lparen) {
+                depth += 1;
+            } else if (tokens[endIdx] == .rparen) {
+                depth -= 1;
+            }
+            endIdx += 1;
+        }
+        if (endIdx >= tokens.len) {
+            return ParseError.UnmatchedParen;
+        }
+    }
+    return endIdx;
 }
 
 fn debugPrintValue(v: Value) !void {
