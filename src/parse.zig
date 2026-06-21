@@ -18,7 +18,7 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!Val
     }
 
     const firstCons = try allocator.create(Cons);
-    firstCons.cdr = null;
+    firstCons.cdr = .nil;
     var currentCons: *Cons = firstCons;
 
     var i: u64 = 1;
@@ -58,8 +58,8 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!Val
         }
         if (i < idxOfClosingPar) {
             const nextCons = try allocator.create(Cons);
-            nextCons.cdr = null;
-            currentCons.cdr = nextCons;
+            nextCons.cdr = .nil;
+            currentCons.cdr = .{ .cons = nextCons };
             currentCons = nextCons;
         }
     }
@@ -101,7 +101,10 @@ pub fn consDeinit(allocator: std.mem.Allocator, c: *Cons) void {
         if (cThatIsNotNull.car == .cons) {
             consDeinit(allocator, cThatIsNotNull.car.cons);
         }
-        const next = cThatIsNotNull.cdr;
+        const next = switch(cThatIsNotNull.cdr) {
+            .cons => |innerC| innerC,
+            else => null,
+        };
         allocator.destroy(cThatIsNotNull);
         nullableC = next;
     }
@@ -134,16 +137,16 @@ test "simple (+ 1 2)" {
     const parsed = try parse(std.testing.allocator, &tokens);
     defer consDeinit(std.testing.allocator, parsed.cons);
     try expect(std.mem.eql(u8, parsed.cons.car.symbol, "+"));
-    try expect(parsed.cons.cdr != null);
+    try expect(parsed.cons.cdr != .nil);
 
-    const cons2 = parsed.cons.cdr.?;
+    const cons2 = parsed.cons.cdr.cons;
     const v2 = cons2.car;
     try expect(v2.integer == 1);
 
-    const cons3 = cons2.cdr.?;
+    const cons3 = cons2.cdr.cons;
     const v3 = cons3.car;
     try expect(v3.integer == 2);
-    try expect(cons3.cdr == null);
+    try expect(cons3.cdr == .nil);
 }
 
 test "simple (+ (- 5 4) 40 1)" {
@@ -168,17 +171,17 @@ test "simple (+ (- 5 4) 40 1)" {
     defer consDeinit(std.testing.allocator, parsed.cons);
     try expect(std.mem.eql(u8, parsed.cons.car.symbol, "+"));
 
-    const cons2 = parsed.cons.cdr.?;
+    const cons2 = parsed.cons.cdr.cons;
     const inner = cons2.car.cons;
     try expect(std.mem.eql(u8, inner.car.symbol, "-"));
-    try expect(inner.cdr.?.car.integer == 5);
-    try expect(inner.cdr.?.cdr.?.car.integer == 4);
-    try expect(inner.cdr.?.cdr.?.cdr == null);
+    try expect(inner.cdr.cons.car.integer == 5);
+    try expect(inner.cdr.cons.cdr.cons.car.integer == 4);
+    try expect(inner.cdr.cons.cdr.cons.cdr == .nil);
 
-    const cons3 = cons2.cdr.?;
+    const cons3 = cons2.cdr.cons;
     try expect(cons3.car.integer == 10);
 
-    const cons4 = cons3.cdr.?;
+    const cons4 = cons3.cdr.cons;
     try expect(cons4.car.integer == 1);
-    try expect(cons4.cdr == null);
+    try expect(cons4.cdr == .nil);
 }

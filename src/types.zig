@@ -16,7 +16,7 @@ pub const Value = union(enum) {
 
 pub const Cons = struct {
     car: Value,
-    cdr: ?*Cons,
+    cdr: Value,
 };
 
 pub const Env = struct {
