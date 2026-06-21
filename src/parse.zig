@@ -18,53 +18,73 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!Val
     }
 
     const firstCons = try allocator.create(Cons);
+    firstCons.cdr = null;
     var currentCons: *Cons = firstCons;
 
     var i: u64 = 1;
     const idxOfClosingPar = tokens.len - 1;
-    const lastIdx = idxOfClosingPar - 1;
     while (i < idxOfClosingPar) {
         const tok = tokens[i];
         switch (tok) {
             .integer, .symbol => {
                 currentCons.car = try parseSingle(tok);
-                if (i == lastIdx) {
-                    currentCons.cdr = null;
-                } else {
-                    currentCons.cdr = try allocator.create(Cons);
-                    currentCons = currentCons.cdr.?;
-                }
                 i += 1;
             },
             .lparen => {
-                var subexprTokensIdx = i + 1;
+                var subexprEnd = i + 1;
                 {
                     var openingParenNum: i64 = 1;
-                    while (openingParenNum != 0 and subexprTokensIdx < tokens.len) {
-                        if (tokens[subexprTokensIdx] == .lparen) {
+                    while (openingParenNum != 0 and subexprEnd < tokens.len) {
+                        if (tokens[subexprEnd] == .lparen) {
                             openingParenNum += 1;
-                        } else if (tokens[subexprTokensIdx] == .rparen) {
+                        } else if (tokens[subexprEnd] == .rparen) {
                             openingParenNum -= 1;
                         }
-                        subexprTokensIdx += 1;
+                        subexprEnd += 1;
                     }
-                    if (subexprTokensIdx >= tokens.len) {
+                    if (subexprEnd >= tokens.len) {
                         return ParseError.UnmatchedParen;
                     }
                 }
-                currentCons.cdr = switch (try parse(allocator, tokens[i..subexprTokensIdx])) {
-                    .cons => |c| c,
+                switch (try parse(allocator, tokens[i..subexprEnd])) {
+                    .cons => |c| currentCons.car = Value{ .cons = c },
                     else => unreachable,
-                };
-                i = subexprTokensIdx;
+                }
+                i = subexprEnd;
             },
             .rparen => {
                 return ParseError.UnmatchedParen;
             },
         }
+        if (i < idxOfClosingPar) {
+            const nextCons = try allocator.create(Cons);
+            nextCons.cdr = null;
+            currentCons.cdr = nextCons;
+            currentCons = nextCons;
+        }
     }
 
+    // return first_expr;
     return .{ .cons = firstCons };
+}
+
+fn debugPrintValue(v: Value) !void {
+    switch (v) {
+        .integer => |i| std.debug.print(" {d} ", .{i}),
+        .symbol => |s| std.debug.print(" '{s}' ", .{s}),
+        .nil => std.debug.print(" nil ", .{}),
+        .cons => |c| {
+            var nullableC: ?*Cons = c;
+            std.debug.print(" ( ", .{});
+            while(nullableC) |cThatIsNotNull| {
+                try debugPrintValue(cThatIsNotNull.car);
+                std.debug.print(" , ", .{});
+                nullableC = cThatIsNotNull.cdr;
+            }
+            std.debug.print(" ) ", .{});
+        }
+    }
+    std.debug.print("\n", .{});
 }
 
 fn parseSingle(token: Token) ParseError!Value {
@@ -78,9 +98,12 @@ fn parseSingle(token: Token) ParseError!Value {
 pub fn consDeinit(allocator: std.mem.Allocator, c: *Cons) void {
     var nullableC: ?*Cons = c;
     while (nullableC) |cThatIsNotNull| {
-        const newCopy = cThatIsNotNull.cdr;
+        if (cThatIsNotNull.car == .cons) {
+            consDeinit(allocator, cThatIsNotNull.car.cons);
+        }
+        const next = cThatIsNotNull.cdr;
         allocator.destroy(cThatIsNotNull);
-        nullableC = newCopy;
+        nullableC = next;
     }
 }
 
@@ -121,4 +144,41 @@ test "simple (+ 1 2)" {
     const v3 = cons3.car;
     try expect(v3.integer == 2);
     try expect(cons3.cdr == null);
+}
+
+test "simple (+ (- 5 4) 40 1)" {
+    const tokens = [_]Token{
+        .lparen,
+        .{ .symbol = "+" },
+
+        // zig fmt: off
+            .lparen,
+            .{ .symbol = "-" },
+            .{ .integer = 5 },
+            .{ .integer = 4 },
+            .rparen,
+
+        // zig fmt: off
+        .{ .integer = 10 },
+        .{ .integer = 1 },
+        .rparen,
+    };
+
+    const parsed = try parse(std.testing.allocator, &tokens);
+    defer consDeinit(std.testing.allocator, parsed.cons);
+    try expect(std.mem.eql(u8, parsed.cons.car.symbol, "+"));
+
+    const cons2 = parsed.cons.cdr.?;
+    const inner = cons2.car.cons;
+    try expect(std.mem.eql(u8, inner.car.symbol, "-"));
+    try expect(inner.cdr.?.car.integer == 5);
+    try expect(inner.cdr.?.cdr.?.car.integer == 4);
+    try expect(inner.cdr.?.cdr.?.cdr == null);
+
+    const cons3 = cons2.cdr.?;
+    try expect(cons3.car.integer == 10);
+
+    const cons4 = cons3.cdr.?;
+    try expect(cons4.car.integer == 1);
+    try expect(cons4.cdr == null);
 }
