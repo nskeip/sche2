@@ -3,6 +3,7 @@ const std = @import("std");
 pub const Token = union(enum) {
     lparen,
     rparen,
+    dot,
     integer: i64,
     symbol: []const u8,
 };
