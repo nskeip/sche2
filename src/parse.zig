@@ -13,11 +13,11 @@ const Cursor = struct {
     pos: usize,
 
     fn peek(self: *Cursor) ?Token {
-        return if(self.pos < self.tokens.len) self.tokens[self.pos] else null;
+        return if (self.pos < self.tokens.len) self.tokens[self.pos] else null;
     }
 
     fn advance(self: *Cursor) !Token {
-        if(self.pos >= self.tokens.len) {
+        if (self.pos >= self.tokens.len) {
             return ParseError.UnexpectedEnd;
         }
         const tok = self.tokens[self.pos];
@@ -33,7 +33,7 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!Val
 }
 
 fn parseExpr(allocator: std.mem.Allocator, cursor: *Cursor) ParseError!Value {
-    return switch(cursor.peek() orelse return ParseError.NoExpressionFound) {
+    return switch (cursor.peek() orelse return ParseError.NoExpressionFound) {
         .lparen => parseList(allocator, cursor),
         .integer, .symbol => parseSingle(try cursor.advance()),
         .rparen, .dot => ParseError.UnexpectedToken,
@@ -41,21 +41,21 @@ fn parseExpr(allocator: std.mem.Allocator, cursor: *Cursor) ParseError!Value {
 }
 
 fn parseList(allocator: std.mem.Allocator, cursor: *Cursor) !Value {
-    _ = try cursor.advance();  // consume `(`
-    
-    if(cursor.peek().? == .rparen) {
-        _ = try cursor.advance();  // consume `)`
+    _ = try cursor.advance(); // consume `(`
+
+    if (cursor.peek().? == .rparen) {
+        _ = try cursor.advance(); // consume `)`
         return .nil;
     }
 
     const firstCons = try allocator.create(Cons);
     var current = firstCons;
 
-    while(cursor.peek().? != .rparen) {
+    while (cursor.peek().? != .rparen) {
         current.car = try parseExpr(allocator, cursor);
 
-        if(cursor.peek().? == .dot) {
-            _ = try cursor.advance();  // consume `.`
+        if (cursor.peek().? == .dot) {
+            _ = try cursor.advance(); // consume `.`
             current.cdr = try parseExpr(allocator, cursor);
             break;
         }
@@ -80,13 +80,13 @@ fn debugPrintValue(v: Value) !void {
         .cons => |c| {
             var nullableC: ?*Cons = c;
             std.debug.print(" ( ", .{});
-            while(nullableC) |cThatIsNotNull| {
+            while (nullableC) |cThatIsNotNull| {
                 try debugPrintValue(cThatIsNotNull.car);
                 std.debug.print(" , ", .{});
                 nullableC = cThatIsNotNull.cdr;
             }
             std.debug.print(" ) ", .{});
-        }
+        },
     }
     std.debug.print("\n", .{});
 }
@@ -105,7 +105,7 @@ pub fn consDeinit(allocator: std.mem.Allocator, c: *Cons) void {
         if (cThatIsNotNull.car == .cons) {
             consDeinit(allocator, cThatIsNotNull.car.cons);
         }
-        const next = switch(cThatIsNotNull.cdr) {
+        const next = switch (cThatIsNotNull.cdr) {
             .cons => |innerC| innerC,
             else => null,
         };
