@@ -223,13 +223,54 @@ test "(1 . 2) is a pair" {
 }
 
 test "(1 2 . 3) is allowed" {
-    // TODO: add test
-    // TODO: check the pair at the end (should have (2, 3) pair)
+    const tokens = [_]Token{
+        .lparen,
+        .{ .integer = 1 },
+        .{ .integer = 2 },
+        .dot,
+        .{ .integer = 3 },
+        .rparen,
+    };
+
+    const parsed = try parse(std.testing.allocator, &tokens);
+    defer consDeinit(std.testing.allocator, parsed.cons);
+    try expect(parsed.cons.car.integer == 1);
+    
+    const cons2 = parsed.cons.cdr.cons;
+    try expect(cons2.car.integer == 2);
+    try expect(cons2.cdr.integer == 3);
 }
 
 test "(1 . 2 3) is not allowed" {
-    // TODO: add test
+    const tokens = [_]Token{
+        .lparen,
+        .{ .integer = 1 },
+        .dot,
+        .{ .integer = 2 },
+        .{ .integer = 3 },
+        .rparen,
+    };
+
+    try std.testing.expectError(ParseError.UnexpectedToken, parse(std.testing.allocator, &tokens));
 }
 
-// TODO: complex example of (1 . (2 . 3))
+test "(1 . (2 . 3))" {
+    const tokens = [_]Token{
+        .lparen,
+        .{ .integer = 1 },
+        .dot,
+        .lparen,
+        .{ .integer = 2 },
+        .dot,
+        .{ .integer = 3 },
+        .rparen,
+        .rparen,
+    };
+
+    const parsed = try parse(std.testing.allocator, &tokens);
+    defer consDeinit(std.testing.allocator, parsed.cons);
+    try expect(parsed.cons.car.integer == 1);
+    try expect(parsed.cons.cdr.cons.car.integer == 2);
+    try expect(parsed.cons.cdr.cons.cdr.integer == 3);
+}
 
