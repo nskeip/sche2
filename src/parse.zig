@@ -8,82 +8,68 @@ const Token = t.Token;
 const Value = t.Value;
 const ParseError = t.ParseError;
 
+const Cursor = struct {
+    tokens: []const Token,
+    pos: usize,
+
+    fn peek(self: *Cursor) ?Token {
+        return if(self.pos < self.tokens.len) self.tokens[self.pos] else null;
+    }
+
+    fn advance(self: *Cursor) !Token {
+        if(self.pos >= self.tokens.len) {
+            return ParseError.UnexpectedEnd;
+        }
+        const tok = self.tokens[self.pos];
+        self.pos += 1;
+        return tok;
+    }
+};
+
 pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!Value {
-    if (tokens.len == 0) {
-        return ParseError.NoExpressionFound;
-    } else if (tokens.len == 1) {
-        return parseSingle(tokens[0]);
-    } else if (tokens[0] != .lparen or tokens[tokens.len - 1] != .rparen) {
-        return ParseError.UnmatchedParen;
-    }
-
-    const result = Value{ .cons = try allocator.create(Cons)};
-    result.cons.cdr = .nil;
-    var currentCons: *Cons = result.cons;
-
-    var i: u64 = 1;
-    const idxOfClosingPar = tokens.len - 1;
-    while (i < idxOfClosingPar) {
-        var nextI: u64 = undefined;
-        switch (tokens[i]) {
-            .integer, .symbol => {
-                currentCons.car = try parseSingle(tokens[i]);
-                nextI = i + 1;
-            },
-            .lparen => {
-                const subexprEnd = i + (try calcCurrentSubexprEnd(tokens[i..]));
-                switch (try parse(allocator, tokens[i..subexprEnd])) {
-                    .cons => |c| currentCons.car = Value{ .cons = c },
-                    else => unreachable,
-                }
-                nextI = subexprEnd;
-            },
-            .rparen => return ParseError.UnmatchedParen,
-            .dot => nextI = i + 1,
-        }
-        const haveMoreTokens = nextI < idxOfClosingPar;
-        if (haveMoreTokens and tokens[i] != .dot and tokens[nextI] != .dot) {
-            const nextCons = try allocator.create(Cons);
-            nextCons.cdr = .nil;
-            currentCons.cdr = .{ .cons = nextCons };
-            currentCons = nextCons;
-        } else if (tokens[i] == .dot and tokens[nextI] != .lparen) {
-            if (nextI + 1 != idxOfClosingPar) return ParseError.UnexpectedToken;
-            currentCons.cdr = try parseSingle(tokens[nextI]);
-            return result;
-        } else if (tokens[i] == .dot and tokens[nextI] == .lparen) {
-            const subexprOffset = try calcCurrentSubexprEnd(tokens[nextI..]);
-            const subexprEnd = nextI + subexprOffset;
-            if (subexprEnd != idxOfClosingPar) return ParseError.UnexpectedToken;
-            switch (try parse(allocator, tokens[nextI..subexprEnd])) {
-                .cons => |c| currentCons.cdr = .{ .cons = c },
-                else => unreachable,
-            }
-            return result;
-        }
-        i = nextI;
-    }
-
+    var cursor = Cursor{ .tokens = tokens, .pos = 0 };
+    const result = try parseExpr(allocator, &cursor);
     return result;
 }
 
-fn calcCurrentSubexprEnd(tokens: []const Token) !usize {
-    var endIdx: usize = 1;
-    {
-        var depth: i64 = 1;  // we have already opened
-        while (depth != 0 and endIdx < tokens.len) {
-            if (tokens[endIdx] == .lparen) {
-                depth += 1;
-            } else if (tokens[endIdx] == .rparen) {
-                depth -= 1;
-            }
-            endIdx += 1;
+fn parseExpr(allocator: std.mem.Allocator, cursor: *Cursor) ParseError!Value {
+    return switch(cursor.peek() orelse return ParseError.NoExpressionFound) {
+        .lparen => parseList(allocator, cursor),
+        .integer, .symbol => parseSingle(try cursor.advance()),
+        .rparen, .dot => ParseError.UnexpectedToken,
+    };
+}
+
+fn parseList(allocator: std.mem.Allocator, cursor: *Cursor) !Value {
+    _ = try cursor.advance();  // consume `(`
+    
+    if(cursor.peek().? == .rparen) {
+        _ = try cursor.advance();  // consume `)`
+        return .nil;
+    }
+
+    const firstCons = try allocator.create(Cons);
+    var current = firstCons;
+
+    while(cursor.peek().? != .rparen) {
+        current.car = try parseExpr(allocator, cursor);
+
+        if(cursor.peek().? == .dot) {
+            _ = try cursor.advance();  // consume `.`
+            current.cdr = try parseExpr(allocator, cursor);
+            break;
         }
-        if (endIdx >= tokens.len) {
-            return ParseError.UnmatchedParen;
+
+        if(cursor.peek().? != .rparen) {
+            current.cdr = .{ .cons = try allocator.create(Cons) };
+            current = current.cdr.cons;
+        } else {
+            current.cdr = .nil;
         }
     }
-    return endIdx;
+
+    _ = try cursor.advance(); // consume `)`
+    return .{ .cons = firstCons };
 }
 
 fn debugPrintValue(v: Value) !void {

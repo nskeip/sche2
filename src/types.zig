@@ -29,5 +29,6 @@ pub const ParseError = error {
     NoExpressionFound,
     UnexpectedToken,
     UnmatchedParen,
+    UnexpectedEnd,
     OutOfMemory,
 };
