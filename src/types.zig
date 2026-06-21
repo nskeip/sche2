@@ -11,7 +11,7 @@ pub const Value = union(enum) {
     integer: i64,
     symbol: []const u8,
     cons: *Cons,
-    nil, // TODO: remove, use null as cons
+    nil,
 };
 
 pub const Cons = struct {
